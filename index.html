@@ -630,6 +630,11 @@ function startPolling() {
       if (changed) {
         weights = remote.weights;
         history = remote.history;
+        // 清除乱码/过期条目
+        Object.keys(weights).forEach(key => {
+          if (!restaurants.includes(key)) delete weights[key];
+        });
+        history = history.filter(h => restaurants.includes(h.name));
         saveLocalData();
         drawWheel(wheelAngle);
         renderHistory();
@@ -1011,6 +1016,11 @@ async function init() {
   restaurants.forEach(name => {
     if (!(name in weights)) weights[name] = 1.0;
   });
+  // 清除旧数据中可能存在的乱码/过期条目
+  Object.keys(weights).forEach(key => {
+    if (!restaurants.includes(key)) delete weights[key];
+  });
+  history = history.filter(h => restaurants.includes(h.name));
 
   resizeCanvas();
   drawWheel(wheelAngle);
