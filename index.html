@@ -548,8 +548,9 @@ async function fetchRemoteData() {
     if (!res.ok) return null;
     const json = await res.json();
     dataSha = json.sha;
-    // GitHub API 返回 base64 编码内容
-    const decoded = JSON.parse(atob(json.content.replace(/\s/g, '')));
+    // GitHub API 返回 base64 编码内容，需 UTF-8 解码中文
+    const raw = atob(json.content.replace(/\s/g, ''));
+    const decoded = JSON.parse(decodeURIComponent(escape(raw)));
     return decoded;
   } catch(e) { console.warn('GitHub 读取失败', e); }
   return null;
