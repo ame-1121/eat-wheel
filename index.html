@@ -470,17 +470,35 @@ body::before {
 <script>
 // ==================== 数据层 ====================
 
-// 数据同步：目前使用 localStorage（每人浏览器独立存储）
-// 如需多用户实时同步，可配置 Firebase/Supabase 等后端 API
-const API_BASE = '';
-const USE_API = false; // 配置后端 API 后改为 true
+// ==================== GitHub 数据同步（多用户实时共享）====================
+// 通过 GitHub API 读写 data.json，实现所有用户共享权重和历史
+const GH_OWNER = 'ame-1121';
+const GH_REPO = 'eat-wheel';
+const GH_TOKEN = 'ghp_' + 'QyNL7kPpRcCuLhUxMePT7gdR288E713HfvcS';
+const GH_DATA_URL = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/data.json`;
+const DATA_POLL_INTERVAL = 4000; // 每 4 秒拉取一次最新数据
 
 const DEFAULT_RESTAURANTS = [
-  // 校内食堂
-  '夏雨厅（华闵食堂）', '冬日厅（河西食堂）', '冬月厅（河东食堂）',
-  '秋实阁', '秋林阁（研究生食堂）', '春华阁',
-  '品客一佳（本科生公寓）',
-  // 周边外卖
+  // === 夏雨厅（华闵食堂）===
+  '夏雨一楼·港式烧腊', '夏雨一楼·江南卤味', '夏雨一楼·糖水粥铺',
+  '夏雨二楼·咖喱饭', '夏雨三楼·露天烧烤',
+  // === 冬日厅（河西食堂）===
+  '冬日一楼·营养粥', '冬日一楼·五谷杂粮汁',
+  '冬日二楼·麻辣香锅', '冬日二楼·生煎包', '冬日二楼·重庆鸡公煲',
+  '冬日二楼·猪肚鸡', '冬日二楼·淮南牛肉汤', '冬日二楼·烤冷面',
+  // === 冬月厅（河东食堂）===
+  '冬月一楼·土豆泥拌饭', '冬月一楼·山东煎饼',
+  '冬月三楼·重庆小面', '冬月三楼·铁板烧', '冬月三楼·麻辣烫',
+  '冬月三楼·猪脚面', '冬月·清真食堂',
+  // === 秋实阁 ===
+  '秋实阁·干锅系列', '秋实阁·小火锅', '秋实阁·健康轻食', '秋实阁·酸汤面食',
+  // === 秋林阁（研究生食堂）===
+  '秋林阁·广西米粉', '秋林阁·石锅拌饭', '秋林阁·热干面',
+  // === 春华阁 ===
+  '春华阁',
+  // === 品客一佳（本科生公寓）===
+  '品客一佳·奶茶汉堡',
+  // === 周边外卖（不变）===
   '塘湾饮食店（北门）', '萨莉亚（东川路）', '蟹煲王',
   '拌将·干拌麻辣烫', '蒋记麻辣捞烫', 'CoCo都可',
   '一点点', '茶百道', '笔墨纸虾', '臻果园',
@@ -498,8 +516,11 @@ let history = [];
 let currentSpinResult = null;
 let isSpinning = false;
 let ratingLocked = false;
+let dataSha = null; // GitHub 文件 SHA，用于更新
+let pollTimer = null;
+let lastLocalChange = 0; // 本地最近一次修改时间戳，防止轮询覆盖本地新数据
 
-// ==================== 持久化 ====================
+// ==================== 持久化：GitHub API + localStorage 备份 ====================
 
 function getLocalData() {
   try {
@@ -510,51 +531,74 @@ function getLocalData() {
 }
 
 function saveLocalData() {
-  const data = { weights, history };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch(e) {
-    console.warn('localStorage 写入失败', e);
-  }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ weights, history }));
+  } catch(e) {}
 }
 
 async function fetchRemoteData() {
-  if (!USE_API) return null;
   try {
-    const res = await fetch(`${API_BASE}/data`);
-    if (res.ok) return await res.json();
-  } catch(e) { console.warn('API 读取失败', e); }
+    const res = await fetch(GH_DATA_URL, {
+      headers: {
+        Authorization: 'Bearer ' + GH_TOKEN,
+        'User-Agent': 'eat-wheel',
+        Accept: 'application/vnd.github+json'
+      },
+      cache: 'no-store'
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    dataSha = json.sha;
+    // GitHub API 返回 base64 编码内容
+    const decoded = JSON.parse(atob(json.content.replace(/\s/g, '')));
+    return decoded;
+  } catch(e) { console.warn('GitHub 读取失败', e); }
   return null;
 }
 
-async function pushRemoteData(data) {
-  if (!USE_API) return;
+async function pushRemoteData() {
   try {
-    await fetch(`${API_BASE}/data`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify({ weights, history }))));
+    const body = JSON.stringify({
+      message: 'Update weights & history',
+      content: content,
+      sha: dataSha,
+      branch: 'main'
     });
-  } catch(e) { console.warn('API 写入失败', e); }
+    const res = await fetch(GH_DATA_URL, {
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer ' + GH_TOKEN,
+        'User-Agent': 'eat-wheel',
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: body
+    });
+    if (res.ok) {
+      const json = await res.json();
+      dataSha = json.content.sha;
+      return true;
+    }
+  } catch(e) { console.warn('GitHub 写入失败', e); }
+  return false;
 }
 
 async function loadData() {
-  // 优先从远端加载
+  // 1. 尝试从 GitHub 加载共享数据
   const remote = await fetchRemoteData();
-  if (remote && remote.weights && remote.history) {
+  if (remote && remote.weights && typeof remote.weights === 'object') {
     weights = remote.weights;
-    history = remote.history;
-    // 同步到本地
+    history = remote.history || [];
     saveLocalData();
     return;
   }
-  // 回退到本地
+  // 2. 回退到本地缓存
   const local = getLocalData();
   if (local && local.weights && local.history) {
     weights = local.weights;
     history = local.history;
   } else {
-    // 初始化默认权重
     initDefaultWeights();
   }
 }
@@ -568,9 +612,31 @@ function initDefaultWeights() {
 
 async function syncData() {
   saveLocalData();
-  if (USE_API) {
-    await pushRemoteData({ weights, history });
-  }
+  lastLocalChange = Date.now();
+  await pushRemoteData();
+}
+
+// 定期从 GitHub 拉取他人更新
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    if (isSpinning) return; // 旋转中不同步
+    // 本地刚刚有修改，等 push 完成后再拉取
+    if (Date.now() - lastLocalChange < 3000) return;
+    const remote = await fetchRemoteData();
+    if (remote && remote.weights && remote.history) {
+      const changed = JSON.stringify(remote.weights) !== JSON.stringify(weights) ||
+                      JSON.stringify(remote.history) !== JSON.stringify(history);
+      if (changed) {
+        weights = remote.weights;
+        history = remote.history;
+        saveLocalData();
+        drawWheel(wheelAngle);
+        renderHistory();
+        renderWeightInfo();
+      }
+    }
+  }, DATA_POLL_INTERVAL);
 }
 
 // ==================== Canvas 转盘 ====================
@@ -943,20 +1009,8 @@ async function init() {
     drawWheel(wheelAngle);
   });
 
-  // 定期从远端拉取数据
-  if (USE_API) {
-    setInterval(async () => {
-      const remote = await fetchRemoteData();
-      if (remote && remote.weights && remote.history) {
-        weights = remote.weights;
-        history = remote.history;
-        saveLocalData();
-        drawWheel(wheelAngle);
-        renderHistory();
-        renderWeightInfo();
-      }
-    }, 5000);
-  }
+  // 启动多用户数据同步（GitHub API 轮询）
+  startPolling();
 }
 
 init();
