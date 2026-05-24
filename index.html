@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>今天吃什么？</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #FFF8F0;
+  --bg-warm: #FFF0E0;
+  --primary: #FF6B35;
+  --primary-dark: #E55A2B;
+  --gold: #F0A860;
+  --text: #3D3226;
+  --text-light: #8B7E74;
+  --card: #FFFFFF;
+  --card-shadow: 0 4px 24px rgba(180, 120, 80, 0.12);
+  --good: #06B58A;
+  --okay: #F0A860;
+  --bad: #E87060;
+  --border: #F0E0D0;
+  --radius: 20px;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif;
+  background: linear-gradient(135deg, #FFF8F0 0%, #FFF0E0 50%, #FFE8D6 100%);
+  min-height: 100vh;
+  color: var(--text);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background-attachment: fixed;
+}
+
+/* Decorative bg patterns */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255,154,118,0.10) 0%, transparent 50%),
+    radial-gradient(circle at 85% 75%, rgba(240,168,96,0.08) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(255,200,120,0.05) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app-container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 960px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.header h1 {
+  font-size: 2.2em;
+  font-weight: 700;
+  background: linear-gradient(135deg, #FF6B35, #F0A860);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 0.05em;
+}
+
+.header .subtitle {
+  font-size: 0.95em;
+  color: var(--text-light);
+  margin-top: 4px;
+}
+
+.main-layout {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+/* Wheel Panel */
+.wheel-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.wheel-wrapper {
+  position: relative;
+  width: 440px;
+  height: 440px;
+}
+
+.wheel-wrapper canvas {
+  position: absolute;
+  top: 0; left: 0;
+}
+
+/* Pointer */
+.pointer {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 18px solid transparent;
+  border-right: 18px solid transparent;
+  border-top: 32px solid var(--primary);
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+  z-index: 10;
+}
+
+.pointer::after {
+  content: '';
+  position: absolute;
+  top: -38px;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  background: var(--primary-dark);
+  border-radius: 50%;
+}
+
+/* Center button */
+.center-btn {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #FF6B35, #E55A2B);
+  border: 4px solid #FFF;
+  color: #FFF;
+  font-size: 1.8em;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 4px 16px rgba(255,107,53,0.45), 0 0 0 6px rgba(255,107,53,0.12);
+  transition: transform 0.2s, box-shadow 0.2s;
+  letter-spacing: 0.05em;
+}
+
+.center-btn:hover {
+  transform: translate(-50%, -50%) scale(1.08);
+  box-shadow: 0 6px 24px rgba(255,107,53,0.55), 0 0 0 10px rgba(255,107,53,0.18);
+}
+
+.center-btn:active {
+  transform: translate(-50%, -50%) scale(0.95);
+}
+
+.center-btn.spinning {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.center-btn.spinning:hover {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* Result */
+.result-display {
+  text-align: center;
+  font-size: 1.3em;
+  font-weight: 600;
+  min-height: 36px;
+  color: var(--primary-dark);
+  transition: all 0.3s;
+}
+
+/* Rating buttons */
+.rating-buttons {
+  display: none;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.rating-buttons.visible {
+  display: flex;
+  animation: fadeInUp 0.4s ease;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rate-btn {
+  padding: 12px 28px;
+  border-radius: 50px;
+  border: 2px solid transparent;
+  font-size: 1.05em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+  letter-spacing: 0.03em;
+}
+
+.rate-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
+
+.rate-btn:active {
+  transform: scale(0.96);
+}
+
+.rate-btn.good {
+  background: #E8F8F0;
+  color: var(--good);
+  border-color: var(--good);
+}
+
+.rate-btn.good:hover {
+  background: var(--good);
+  color: #FFF;
+}
+
+.rate-btn.okay {
+  background: #FDF5EB;
+  color: #C88040;
+  border-color: var(--okay);
+}
+
+.rate-btn.okay:hover {
+  background: var(--okay);
+  color: #FFF;
+}
+
+.rate-btn.bad {
+  background: #FDF0EE;
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.rate-btn.bad:hover {
+  background: var(--bad);
+  color: #FFF;
+}
+
+.rate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* History Panel */
+.history-panel {
+  flex: 1 1 320px;
+  max-width: 360px;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--card-shadow);
+  padding: 22px 18px;
+  max-height: 520px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+}
+
+.history-panel h2 {
+  font-size: 1.15em;
+  color: var(--primary-dark);
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: #E0D0C0;
+  border-radius: 10px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #FFFAF5;
+  border-radius: 12px;
+  border: 1px solid #F5EDE3;
+  animation: fadeIn 0.3s ease;
+  font-size: 0.92em;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.history-item .time {
+  font-size: 0.78em;
+  color: var(--text-light);
+  white-space: nowrap;
+  min-width: 52px;
+}
+
+.history-item .name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.history-item .rating {
+  font-weight: 600;
+  font-size: 0.88em;
+  white-space: nowrap;
+}
+
+.history-item .rating.good-r { color: var(--good); }
+.history-item .rating.okay-r { color: #C88040; }
+.history-item .rating.bad-r { color: var(--bad); }
+
+.history-empty {
+  text-align: center;
+  color: var(--text-light);
+  padding: 40px 0;
+  font-size: 0.95em;
+}
+
+/* Weight info tooltip */
+.weight-info {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #FFFAF5;
+  border-radius: 12px;
+  border: 1px solid #F5EDE3;
+  font-size: 0.82em;
+  color: var(--text-light);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* Confetti overlay */
+.confetti-container {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.confetti-piece {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  animation: confettiFall 1.5s ease-out forwards;
+}
+
+@keyframes confettiFall {
+  0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(105vh) rotate(720deg); opacity: 0; }
+}
+
+/* Mobile */
+@media (max-width: 780px) {
+  .main-layout {
+    flex-direction: column;
+    align-items: center;
+  }
+  .wheel-wrapper {
+    width: 340px;
+    height: 340px;
+  }
+  .center-btn {
+    width: 66px;
+    height: 66px;
+    font-size: 1.4em;
+  }
+  .header h1 { font-size: 1.6em; }
+  .history-panel {
+    max-width: 100%;
+    width: 100%;
+    max-height: 320px;
+  }
+  .pointer {
+    border-left-width: 14px;
+    border-right-width: 14px;
+    border-top-width: 26px;
+    top: -14px;
+  }
+}
+
+@media (max-width: 400px) {
+  .wheel-wrapper {
+    width: 280px;
+    height: 280px;
+  }
+  .center-btn {
+    width: 56px;
+    height: 56px;
+    font-size: 1.2em;
+  }
+  .rate-btn {
+    padding: 10px 20px;
+    font-size: 0.95em;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="app-container">
+  <div class="header">
+    <h1>今天吃什么？</h1>
+    <p class="subtitle">华东师大闵行校区 · 美食转盘</p>
+  </div>
+
+  <div class="main-layout">
+    <!-- Wheel Panel -->
+    <div class="wheel-panel">
+      <div class="wheel-wrapper" id="wheelWrapper">
+        <div class="pointer"></div>
+        <canvas id="wheelCanvas"></canvas>
+        <button class="center-btn" id="spinBtn" title="点击转起来！">吃</button>
+      </div>
+      <div class="result-display" id="resultDisplay"></div>
+      <div class="rating-buttons" id="ratingButtons">
+        <button class="rate-btn good" data-rating="good">好吃</button>
+        <button class="rate-btn okay" data-rating="okay">一般</button>
+        <button class="rate-btn bad" data-rating="bad">难吃</button>
+      </div>
+    </div>
+
+    <!-- History Panel -->
+    <div class="history-panel" id="historyPanel">
+      <h2>📋 抽取记录</h2>
+      <div class="history-list" id="historyList">
+        <div class="history-empty">还没有人转过转盘<br>快来第一个试试吧~</div>
+      </div>
+      <div class="weight-info" id="weightInfo"></div>
+    </div>
+  </div>
+</div>
+
+<div class="confetti-container" id="confettiContainer"></div>
+
+<script>
+// ==================== 数据层 ====================
+
+// 数据同步：目前使用 localStorage（每人浏览器独立存储）
+// 如需多用户实时同步，可配置 Firebase/Supabase 等后端 API
+const API_BASE = '';
+const USE_API = false; // 配置后端 API 后改为 true
+
+const DEFAULT_RESTAURANTS = [
+  // 校内食堂
+  '夏雨厅（华闵食堂）', '冬日厅（河西食堂）', '冬月厅（河东食堂）',
+  '秋实阁', '秋林阁（研究生食堂）', '春华阁',
+  '品客一佳（本科生公寓）',
+  // 周边外卖
+  '塘湾饮食店（北门）', '萨莉亚（东川路）', '蟹煲王',
+  '拌将·干拌麻辣烫', '蒋记麻辣捞烫', 'CoCo都可',
+  '一点点', '茶百道', '笔墨纸虾', '臻果园',
+  '老乡鸡', '塔斯汀中式汉堡', '肯德基', '麦当劳',
+  '正新鸡排', '张亮麻辣烫', '杨国福麻辣烫',
+  '川聚餐饮（东川店）', '吉祥馄饨'
+];
+
+const STORAGE_KEY = 'eat_wheel_data';
+
+// 全局状态
+let restaurants = [];
+let weights = {};
+let history = [];
+let currentSpinResult = null;
+let isSpinning = false;
+let ratingLocked = false;
+
+// ==================== 持久化 ====================
+
+function getLocalData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return null;
+}
+
+function saveLocalData() {
+  const data = { weights, history };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch(e) {
+    console.warn('localStorage 写入失败', e);
+  }
+}
+
+async function fetchRemoteData() {
+  if (!USE_API) return null;
+  try {
+    const res = await fetch(`${API_BASE}/data`);
+    if (res.ok) return await res.json();
+  } catch(e) { console.warn('API 读取失败', e); }
+  return null;
+}
+
+async function pushRemoteData(data) {
+  if (!USE_API) return;
+  try {
+    await fetch(`${API_BASE}/data`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch(e) { console.warn('API 写入失败', e); }
+}
+
+async function loadData() {
+  // 优先从远端加载
+  const remote = await fetchRemoteData();
+  if (remote && remote.weights && remote.history) {
+    weights = remote.weights;
+    history = remote.history;
+    // 同步到本地
+    saveLocalData();
+    return;
+  }
+  // 回退到本地
+  const local = getLocalData();
+  if (local && local.weights && local.history) {
+    weights = local.weights;
+    history = local.history;
+  } else {
+    // 初始化默认权重
+    initDefaultWeights();
+  }
+}
+
+function initDefaultWeights() {
+  weights = {};
+  history = [];
+  restaurants.forEach(name => { weights[name] = 1.0; });
+  saveLocalData();
+}
+
+async function syncData() {
+  saveLocalData();
+  if (USE_API) {
+    await pushRemoteData({ weights, history });
+  }
+}
+
+// ==================== Canvas 转盘 ====================
+
+const canvas = document.getElementById('wheelCanvas');
+const ctx = canvas.getContext('2d');
+
+const SEGMENT_COLORS = [
+  '#FF9A76', '#FECD70', '#FFAD85', '#F9C784', '#FEAE8B',
+  '#FFD4A3', '#FC9D9D', '#FDCF76', '#F7B886', '#FFC3A0',
+  '#F8E0B0', '#F9B8A4', '#FFE0B2', '#F5C28E', '#FFB399',
+  '#FDD9A5', '#FFAA85', '#FCE1A4', '#FFC8A8', '#FAD48B',
+  '#FEB29C', '#FFDAB9', '#F9CA8C', '#FFBD9D', '#FAE0A0',
+  '#FDC9A8', '#FFE4BC', '#F8C9A0', '#FFCFAB', '#FDE2B0'
+];
+
+let wheelAngle = 0; // 当前绘制角度（弧度）
+let wheelSize = 440;
+
+function resizeCanvas() {
+  const wrapper = document.getElementById('wheelWrapper');
+  const w = wrapper.clientWidth;
+  wheelSize = Math.min(w, 440);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = wheelSize * dpr;
+  canvas.height = wheelSize * dpr;
+  canvas.style.width = wheelSize + 'px';
+  canvas.style.height = wheelSize + 'px';
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(dpr, dpr);
+}
+
+function drawWheel(angle) {
+  const cx = wheelSize / 2;
+  const cy = wheelSize / 2;
+  const radius = wheelSize / 2 - 12;
+  const n = restaurants.length;
+  if (n === 0) return;
+
+  ctx.clearRect(0, 0, wheelSize, wheelSize);
+
+  const totalWeight = Object.values(weights).reduce((s, w) => s + w, 0);
+
+  // 外圈阴影
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  ctx.fill();
+  ctx.restore();
+
+  let startAngle = angle;
+  for (let i = 0; i < n; i++) {
+    const name = restaurants[i];
+    const w = weights[name] || 1.0;
+    const sweep = (w / totalWeight) * Math.PI * 2;
+
+    // Segment fill
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, startAngle, startAngle + sweep);
+    ctx.closePath();
+    ctx.fillStyle = SEGMENT_COLORS[i % SEGMENT_COLORS.length];
+    ctx.fill();
+
+    // Segment border
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Text
+    const midAngle = startAngle + sweep / 2;
+    const textRadius = radius * 0.64;
+    const tx = cx + Math.cos(midAngle) * textRadius;
+    const ty = cy + Math.sin(midAngle) * textRadius;
+
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.rotate(midAngle + Math.PI / 2);
+    ctx.fillStyle = '#3D3226';
+    ctx.font = `600 ${Math.min(13, Math.max(10, 240 / n))}px "PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Truncate name if needed
+    let displayName = name;
+    const maxLen = Math.floor(radius * 0.35 / 10);
+    if (displayName.length > maxLen) {
+      displayName = displayName.substring(0, maxLen - 1) + '…';
+    }
+    ctx.fillText(displayName, 0, 0);
+    ctx.restore();
+
+    startAngle += sweep;
+  }
+
+  // 中心装饰圆
+  const innerGrad = ctx.createRadialGradient(cx, cy, radius * 0.12, cx, cy, radius * 0.28);
+  innerGrad.addColorStop(0, '#FFF');
+  innerGrad.addColorStop(1, '#F5EDE3');
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * 0.28, 0, Math.PI * 2);
+  ctx.fillStyle = innerGrad;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 外圈装饰环
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = '#E0D0C0';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+// ==================== 旋转动画 ====================
+
+function weightedRandom() {
+  const totalWeight = Object.values(weights).reduce((s, w) => s + w, 0);
+  let r = Math.random() * totalWeight;
+  for (let i = 0; i < restaurants.length; i++) {
+    const name = restaurants[i];
+    r -= (weights[name] || 1.0);
+    if (r <= 0) return { index: i, name };
+  }
+  return { index: restaurants.length - 1, name: restaurants[restaurants.length - 1] };
+}
+
+function spinWheel() {
+  if (isSpinning) return;
+  isSpinning = true;
+  ratingLocked = false;
+  currentSpinResult = null;
+
+  const btn = document.getElementById('spinBtn');
+  btn.classList.add('spinning');
+  btn.textContent = '…';
+
+  document.getElementById('resultDisplay').textContent = '';
+  document.getElementById('ratingButtons').classList.remove('visible');
+
+  const result = weightedRandom();
+  const n = restaurants.length;
+  const totalWeight = Object.values(weights).reduce((s, w) => s + w, 0);
+
+  // 计算目标角度：让结果停在指针位置（顶部，即 -PI/2 即 270°）
+  let cumulative = 0;
+  for (let i = 0; i < result.index; i++) {
+    cumulative += (weights[restaurants[i]] || 1.0) / totalWeight * Math.PI * 2;
+  }
+  const segHalf = (weights[result.name] || 1.0) / totalWeight * Math.PI;
+  const targetSegCenter = cumulative + segHalf;
+
+  // 指针在顶部（-PI/2），转盘顺时针旋转。需要让 targetSegCenter 对齐到顶部
+  // 顶部在画布坐标系中对应角度 -PI/2
+  const pointerAngle = -Math.PI / 2;
+  let targetAngle = pointerAngle - targetSegCenter;
+
+  // 确保转盘至少转 5 圈
+  while (targetAngle - wheelAngle < Math.PI * 10) {
+    targetAngle += Math.PI * 2;
+  }
+
+  const startAngle = wheelAngle;
+  const totalSpin = targetAngle - startAngle;
+  const duration = 4000 + Math.random() * 1500; // 4-5.5s
+  const startTime = performance.now();
+
+  function animate(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1.0);
+
+    // ease-out: cubic
+    const eased = 1 - Math.pow(1 - progress, 3.5);
+    wheelAngle = startAngle + totalSpin * eased;
+    drawWheel(wheelAngle);
+
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      // 完成
+      wheelAngle = targetAngle;
+      drawWheel(wheelAngle);
+      onSpinComplete(result);
+    }
+  }
+
+  requestAnimationFrame(animate);
+}
+
+function onSpinComplete(result) {
+  isSpinning = false;
+  currentSpinResult = result;
+  ratingLocked = false;
+
+  const btn = document.getElementById('spinBtn');
+  btn.classList.remove('spinning');
+  btn.textContent = '吃';
+
+  document.getElementById('resultDisplay').textContent = `🎉 ${result.name}`;
+  document.getElementById('ratingButtons').classList.add('visible');
+
+  // 撒花
+  spawnConfetti();
+
+  // 添加到历史（先不评价）
+  addHistoryEntry(result.name, null);
+}
+
+// ==================== 评价逻辑 ====================
+
+function rateRestaurant(rating) {
+  if (!currentSpinResult || ratingLocked) return;
+  ratingLocked = true;
+
+  const name = currentSpinResult.name;
+  const oldWeight = weights[name] || 1.0;
+
+  if (rating === 'good') {
+    weights[name] = Math.min(oldWeight * 2, 16.0);
+  } else if (rating === 'bad') {
+    weights[name] = Math.max(oldWeight * 0.5, 0.1);
+  }
+  // 'okay' — 不变
+
+  // 更新历史记录的最后一条（当前结果）
+  if (history.length > 0 && history[0].name === name && history[0].rating === null) {
+    history[0].rating = rating;
+    history[0].weightAfter = weights[name];
+  }
+
+  document.getElementById('ratingButtons').classList.remove('visible');
+  document.getElementById('resultDisplay').textContent =
+    `${name} — ${rating === 'good' ? '好吃！权重翻倍' : rating === 'bad' ? '难吃…权重减半' : '一般，权重不变'}`;
+
+  currentSpinResult = null;
+  syncData();
+  drawWheel(wheelAngle);
+  renderHistory();
+  renderWeightInfo();
+}
+
+// ==================== 历史记录 ====================
+
+function addHistoryEntry(name, rating) {
+  history.unshift({
+    name,
+    rating,
+    timestamp: Date.now(),
+    weightAfter: rating ? weights[name] : null
+  });
+  // 保留最近 200 条
+  if (history.length > 200) history = history.slice(0, 200);
+  syncData();
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  if (history.length === 0) {
+    list.innerHTML = '<div class="history-empty">还没有人转过转盘<br>快来第一个试试吧~</div>';
+    return;
+  }
+
+  list.innerHTML = history.map((h, i) => {
+    const time = formatTime(h.timestamp);
+    const ratingClass = h.rating === 'good' ? 'good-r' : h.rating === 'bad' ? 'bad-r' : 'okay-r';
+    const ratingEmoji = h.rating === 'good' ? '好吃' : h.rating === 'bad' ? '难吃' : h.rating === 'okay' ? '一般' : '待评价';
+    const ratingCls = h.rating ? ratingClass : '';
+    return `
+      <div class="history-item">
+        <span class="time">${time}</span>
+        <span class="name">${escapeHtml(h.name)}</span>
+        <span class="rating ${ratingCls}">${ratingEmoji}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderWeightInfo() {
+  const el = document.getElementById('weightInfo');
+  const entries = Object.entries(weights).sort((a, b) => b[1] - a[1]);
+  const top3 = entries.slice(0, 3);
+  const bottom3 = entries.slice(-3).reverse();
+
+  let html = '🏆 权重最高：' + top3.map(([n, w]) => `${escapeHtml(n)}(${w.toFixed(1)})`).join('、');
+  html += '<br>💤 权重最低：' + bottom3.map(([n, w]) => `${escapeHtml(n)}(${w.toFixed(1)})`).join('、');
+  el.innerHTML = html;
+}
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = now - d;
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
+  return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ==================== 撒花特效 ====================
+
+function spawnConfetti() {
+  const container = document.getElementById('confettiContainer');
+  const colors = ['#FF6B6B', '#FF9F43', '#FECA57', '#06B58A', '#FF6B8A', '#54A0FF', '#F0A860'];
+  const frag = document.createDocumentFragment();
+
+  for (let i = 0; i < 50; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.top = -(Math.random() * 40 + 10) + 'px';
+    piece.style.width = (Math.random() * 10 + 6) + 'px';
+    piece.style.height = (Math.random() * 10 + 6) + 'px';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDuration = (Math.random() * 1.5 + 1.5) + 's';
+    piece.style.animationDelay = Math.random() * 0.4 + 's';
+    frag.appendChild(piece);
+  }
+
+  container.appendChild(frag);
+
+  setTimeout(() => {
+    container.innerHTML = '';
+  }, 2500);
+}
+
+// ==================== 初始化 ====================
+
+async function init() {
+  restaurants = DEFAULT_RESTAURANTS;
+  await loadData();
+
+  // 确保所有 restaurant 都有权重
+  restaurants.forEach(name => {
+    if (!(name in weights)) weights[name] = 1.0;
+  });
+
+  resizeCanvas();
+  drawWheel(wheelAngle);
+  renderHistory();
+  renderWeightInfo();
+
+  // 事件绑定
+  document.getElementById('spinBtn').addEventListener('click', spinWheel);
+
+  document.querySelectorAll('.rate-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const rating = btn.dataset.rating;
+      rateRestaurant(rating);
+    });
+  });
+
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    drawWheel(wheelAngle);
+  });
+
+  // 定期从远端拉取数据
+  if (USE_API) {
+    setInterval(async () => {
+      const remote = await fetchRemoteData();
+      if (remote && remote.weights && remote.history) {
+        weights = remote.weights;
+        history = remote.history;
+        saveLocalData();
+        drawWheel(wheelAngle);
+        renderHistory();
+        renderWeightInfo();
+      }
+    }, 5000);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
