@@ -498,13 +498,17 @@ const DEFAULT_RESTAURANTS = [
   '春华阁',
   // === 品客一佳（本科生公寓）===
   '品客一佳·奶茶汉堡',
-  // === 周边外卖（不变）===
+  // === 周边外卖 ===
   '塘湾饮食店（北门）', '萨莉亚（东川路）', '蟹煲王',
   '拌将·干拌麻辣烫', '蒋记麻辣捞烫', 'CoCo都可',
   '一点点', '茶百道', '笔墨纸虾', '臻果园',
   '老乡鸡', '塔斯汀中式汉堡', '肯德基', '麦当劳',
   '正新鸡排', '张亮麻辣烫', '杨国福麻辣烫',
-  '川聚餐饮（东川店）', '吉祥馄饨'
+  '川聚餐饮（东川店）', '吉祥馄饨',
+  // === 新增外卖 ===
+  '爷爷不泡茶', '茉莉奶白', '赛百味',
+  '瑞幸咖啡', '蜜雪冰城', '霸王茶姬', '喜茶',
+  '星巴克', '华莱士', '沙县小吃', '黄焖鸡米饭', '兰州拉面'
 ];
 
 const STORAGE_KEY = 'eat_wheel_data';
@@ -891,9 +895,9 @@ function rateRestaurant(rating) {
   const oldWeight = weights[name] || 1.0;
 
   if (rating === 'good') {
-    weights[name] = Math.min(oldWeight * 2, 16.0);
+    weights[name] = oldWeight + 0.5;
   } else if (rating === 'bad') {
-    weights[name] = Math.max(oldWeight * 0.5, 0.1);
+    weights[name] = Math.max(oldWeight - 0.5, 0.5);
   }
   // 'okay' — 不变
 
@@ -905,7 +909,7 @@ function rateRestaurant(rating) {
 
   document.getElementById('ratingButtons').classList.remove('visible');
   document.getElementById('resultDisplay').textContent =
-    `${name} — ${rating === 'good' ? '好吃！权重翻倍' : rating === 'bad' ? '难吃…权重减半' : '一般，权重不变'}`;
+    `${name} — ${rating === 'good' ? '好吃！权重+0.5' : rating === 'bad' ? '难吃…权重-0.5' : '一般，权重不变'}`;
 
   currentSpinResult = null;
   syncData();
