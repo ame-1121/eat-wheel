@@ -514,7 +514,6 @@ let restaurants = [];
 let weights = {};
 let history = [];
 let currentSpinResult = null;
-let isSpinning = false;
 let ratingLocked = false;
 let dataSha = null; // GitHub 文件 SHA，用于更新
 let pollTimer = null;
@@ -620,7 +619,7 @@ async function syncData() {
 function startPolling() {
   if (pollTimer) return;
   pollTimer = setInterval(async () => {
-    if (isSpinning) return; // 旋转中不同步
+    if (spinState !== 'idle') return; // 旋转中不同步
     // 本地刚刚有修改，等 push 完成后再拉取
     if (Date.now() - lastLocalChange < 3000) return;
     const remote = await fetchRemoteData();
@@ -772,70 +771,95 @@ function weightedRandom() {
   return { index: restaurants.length - 1, name: restaurants[restaurants.length - 1] };
 }
 
+let spinState = 'idle'; // 'idle' | 'spinning' | 'stopping'
+let spinRafId = null;
+let spinSpeed = 0; // 当前转速（弧度/毫秒）
+const SPIN_SPEED = 0.012; // 自由旋转速度
+
 function spinWheel() {
-  if (isSpinning) return;
-  isSpinning = true;
-  ratingLocked = false;
-  currentSpinResult = null;
-
   const btn = document.getElementById('spinBtn');
-  btn.classList.add('spinning');
-  btn.textContent = '…';
 
-  document.getElementById('resultDisplay').textContent = '';
-  document.getElementById('ratingButtons').classList.remove('visible');
+  if (spinState === 'idle') {
+    // === 第一次点击：开始旋转 ===
+    spinState = 'spinning';
+    ratingLocked = false;
+    currentSpinResult = null;
+    spinSpeed = SPIN_SPEED;
+    btn.textContent = '停';
+    btn.classList.add('spinning');
 
-  const result = weightedRandom();
-  const n = restaurants.length;
-  const totalWeight = Object.values(weights).reduce((s, w) => s + w, 0);
+    document.getElementById('resultDisplay').textContent = '转起来了…点"停"来抽选！';
+    document.getElementById('ratingButtons').classList.remove('visible');
 
-  // 计算目标角度：让结果停在指针位置（顶部，即 -PI/2 即 270°）
-  let cumulative = 0;
-  for (let i = 0; i < result.index; i++) {
-    cumulative += (weights[restaurants[i]] || 1.0) / totalWeight * Math.PI * 2;
-  }
-  const segHalf = (weights[result.name] || 1.0) / totalWeight * Math.PI;
-  const targetSegCenter = cumulative + segHalf;
-
-  // 指针在顶部（-PI/2），转盘顺时针旋转。需要让 targetSegCenter 对齐到顶部
-  // 顶部在画布坐标系中对应角度 -PI/2
-  const pointerAngle = -Math.PI / 2;
-  let targetAngle = pointerAngle - targetSegCenter;
-
-  // 确保转盘至少转 5 圈
-  while (targetAngle - wheelAngle < Math.PI * 10) {
-    targetAngle += Math.PI * 2;
-  }
-
-  const startAngle = wheelAngle;
-  const totalSpin = targetAngle - startAngle;
-  const duration = 4000 + Math.random() * 1500; // 4-5.5s
-  const startTime = performance.now();
-
-  function animate(now) {
-    const elapsed = now - startTime;
-    const progress = Math.min(elapsed / duration, 1.0);
-
-    // ease-out: cubic
-    const eased = 1 - Math.pow(1 - progress, 3.5);
-    wheelAngle = startAngle + totalSpin * eased;
-    drawWheel(wheelAngle);
-
-    if (progress < 1) {
-      requestAnimationFrame(animate);
-    } else {
-      // 完成
-      wheelAngle = targetAngle;
+    let lastTime = performance.now();
+    function spinLoop(now) {
+      const dt = Math.min(now - lastTime, 50); // 防止跳帧
+      lastTime = now;
+      wheelAngle += spinSpeed * dt;
       drawWheel(wheelAngle);
-      onSpinComplete(result);
+      spinRafId = requestAnimationFrame(spinLoop);
     }
-  }
+    spinRafId = requestAnimationFrame(spinLoop);
 
-  requestAnimationFrame(animate);
+  } else if (spinState === 'spinning') {
+    // === 第二次点击：开始减速停止 ===
+    spinState = 'stopping';
+    btn.textContent = '…';
+    btn.classList.add('spinning');
+
+    // 抽选结果
+    const result = weightedRandom();
+    const totalWeight = Object.values(weights).reduce((s, w) => s + w, 0);
+
+    // 计算目标段中心角
+    let cumulative = 0;
+    for (let i = 0; i < result.index; i++) {
+      cumulative += (weights[restaurants[i]] || 1.0) / totalWeight * Math.PI * 2;
+    }
+    const segHalf = (weights[result.name] || 1.0) / totalWeight * Math.PI;
+    const targetSegCenter = cumulative + segHalf;
+
+    // 指针在顶部 (-PI/2)，需对齐
+    const pointerAngle = -Math.PI / 2;
+    let targetAngle = pointerAngle - targetSegCenter;
+
+    // 确保至少再转 3 圈
+    while (targetAngle - wheelAngle < Math.PI * 6) {
+      targetAngle += Math.PI * 2;
+    }
+
+    cancelAnimationFrame(spinRafId);
+
+    const startAngle = wheelAngle;
+    const totalSpin = targetAngle - startAngle;
+    const duration = 2500 + Math.random() * 1500; // 减速 2.5-4s
+    const startTime = performance.now();
+    const startSpeed = spinSpeed;
+
+    function stopLoop(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1.0);
+
+      // ease-out: 模拟减速
+      const eased = 1 - Math.pow(1 - progress, 4);
+      wheelAngle = startAngle + totalSpin * eased;
+      drawWheel(wheelAngle);
+
+      if (progress < 1) {
+        requestAnimationFrame(stopLoop);
+      } else {
+        wheelAngle = targetAngle;
+        drawWheel(wheelAngle);
+        spinState = 'idle';
+        spinSpeed = 0;
+        onSpinComplete(result);
+      }
+    }
+    requestAnimationFrame(stopLoop);
+  }
 }
 
 function onSpinComplete(result) {
-  isSpinning = false;
   currentSpinResult = result;
   ratingLocked = false;
 
@@ -846,10 +870,8 @@ function onSpinComplete(result) {
   document.getElementById('resultDisplay').textContent = `🎉 ${result.name}`;
   document.getElementById('ratingButtons').classList.add('visible');
 
-  // 撒花
   spawnConfetti();
 
-  // 添加到历史（先不评价）
   addHistoryEntry(result.name, null);
 }
 
